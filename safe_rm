@@ -1,0 +1,108 @@
+#!/bin/bash
+
+if [ ! -d ~/deleted ] ; then
+    mkdir ~/deleted
+fi
+
+function safeRemoveFiles(){
+    inode=$(ls -i "$args" | cut -d" " -f1)
+    fullPath=$(readlink -m $args)
+    mv $args ~/deleted/"$args"_$inode
+    echo ""$args"_$inode:$fullPath" >> ~/.restore.info
+}
+
+function recursiveRemove(){
+    for arg in $(find $1 -type f)
+    do
+        args=$($arg | tr "\n" " ")
+        $(safeRemoveFiles $args)
+    done
+
+    find $1 -type d | tr "\n" " " -exec rm {} \;
+}
+
+iFlag=false
+vFlag=false
+ivFlag=false
+rFlag=false
+while getopts ivr opt
+do
+    case $opt in
+        i) iFlag=true;;
+        v) vFlag=true;;
+        iv) ivFlag=true;;
+        r) rFlag=true;;
+    esac
+done
+shift $[OPTIND -1]
+
+for args in $@
+do
+    if $rFlag ; then
+        recursiveRemove $args
+    fi
+done
+
+for args in $@
+do
+    if [ ! -e $args ] ; then
+        echo "Error: file supplied does not exist"
+        exit
+    elif [ -z $args ] ; then
+        echo "Error: no file provided as an argument"
+        exit
+    elif [ -d $args ] ; then
+        echo "Error: directory provided"
+        exit
+    elif [ $args = safe_rm ] ; then
+        echo "Error: attempting to delete safe_rm - operation aborted"
+        exit
+    elif [ -e $args ] ; then
+        if $iFlag ; then
+            read -p "remove file '$args'? [y/n]" yon
+            if [ $yon = y ] || [ $yon = Y ] || [ $yon = yes ] ; then
+                $(safeRemoveFiles)
+            else
+                exit
+            fi
+        elif $vFlag ; then
+            $(safeRemoveFiles)
+            echo "removed '$args'"
+        elif $ivFlag ; then
+            read -p "remove file '$args'? [y/n]" yon
+            if [ $yon = y ] || [ $yon = Y ] || [ $yon = yes ] ; then
+                $(safeRemoveFiles)
+                echo "removed '$args'"
+            else
+                exit
+            fi
+        else
+            $(safeRemoveFiles)
+        fi
+    fi
+done
+
+
+#!/bin/bash
+
+originalPath=$(grep -E $1 ~/.restore.info | cut -d":" -f2)
+fileName=$(echo $1 | cut -d"_" -f1)
+
+if [ ! -e ~/deleted/$1 ] ; then
+    echo "Error: $1 does not exist"
+elif [ -z $1 ] ; then
+    echo "Error: no file provided as argument"
+elif [ -e "$originalPath"  ] ; then
+        read -p "Do you want to overwrite? y/n" yesOrNo
+        if [ $yesOrNo = y ] || [ $yesOrNo = Y ] || [ $yesOrNo = yes ] ; then
+            mv ~/deleted/$1 $originalPath
+            grep -E -v $1 ~/.restore.info > ~/.restore.info.tem
+            mv ~/.restore.info.tem ~/.restore.info
+        else
+            exit
+        fi
+else
+        mv ~/deleted/$1 $originalPath
+        grep -E -v $1 ~/.restore.info > ~/.restore.info.tem
+        mv ~/.restore.info.tem ~/.restore.info
+fi
